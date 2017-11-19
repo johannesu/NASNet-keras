@@ -14,7 +14,7 @@ class CifarStem:
 
     def __call__(self, x):
         with K.name_scope('cifar-stem'):
-            x = Convolution2D(self.filters, 3, kernel_initializer='he_normal', padding='same')(x)
+            x = Convolution2D(self.filters, 3, kernel_initializer='he_normal', padding='same', use_bias=False)(x)
             x = BatchNormalization()(x)
 
         return None, x
@@ -37,7 +37,8 @@ class Separable:
                                     kernel_size=self.kernel_size,
                                     kernel_initializer='he_normal',
                                     strides=strides,
-                                    padding='same')(x)
+                                    padding='same',
+                                    use_bias=False)(x)
                 x = BatchNormalization()(x)
 
         return x
@@ -56,7 +57,7 @@ class Fit:
     def squeeze(self, x, name):
         with K.name_scope('squeeze_{}_to_{}'.format(name, self.filters)):
             x = Activation('relu')(x)
-            x = Convolution2D(self.filters, kernel_size=1, kernel_initializer='he_normal')(x)
+            x = Convolution2D(self.filters, kernel_size=1, kernel_initializer='he_normal', use_bias=False)(x)
             x = BatchNormalization()(x)
 
         return x
@@ -72,7 +73,8 @@ class Fit:
             p2 = ZeroPadding2D(padding=((0, 1), (0, 1)))(x)
             p2 = Cropping2D(cropping=((1, 0), (1, 0)))(p2)
             p2 = AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid')(p2)
-            p2 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal', padding='same')(p2)
+            p2 = Convolution2D(self.filters // 2, kernel_size=1,
+                               kernel_initializer='he_normal', padding='same', use_bias=False)(p2)
 
             x = Concatenate(axis=concat_axis)([p1, p2])
             x = BatchNormalization()(x)
