@@ -3,6 +3,7 @@ from keras import Input, Model
 from keras import backend as K
 from keras.engine import get_source_inputs
 from keras.layers import Activation, SeparableConv2D, BatchNormalization, Dropout
+from keras.layers import ZeroPadding2D, GlobalMaxPooling2D, Cropping2D
 from keras.layers import AveragePooling2D, MaxPooling2D, Add, Concatenate
 from keras.layers import Convolution2D, GlobalAveragePooling2D, Dense
 
@@ -49,9 +50,20 @@ class Fit:
         return x
 
     def half_shape(self, x):
+        concat_axis = 1 if K.image_data_format() == 'channels_first' else -1
+
         with K.name_scope('half_shape'):
-            x = AveragePooling2D(pool_size=(2, 2), strides=(2, 2))(x)
-            x = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal')(x)
+            p1 = AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid')(x)
+            p1 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal',
+                               padding='same', use_bias=False)(p1)
+
+            p2 = ZeroPadding2D(padding=((0, 1), (0, 1)))(x)
+            p2 = Cropping2D(cropping=((1, 0), (1, 0)))(p2)
+            p2 = AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid')(p2)
+            p2 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal', padding='same')(p2)
+
+            x = Concatenate(axis=concat_axis)([p1, p2])
+            x = BatchNormalization()(x)
 
             return x
 
@@ -140,6 +152,7 @@ class ReductionCell:
 def NASNetA(include_top=True,
             input_tensor=None,
             input_shape=None,
+            pooling=None,
             num_stem_filters=96,
             num_cell_repeats=18,
             penultimate_filters=768,
@@ -148,6 +161,9 @@ def NASNetA(include_top=True,
             dropout_rate=0.5) -> Model:
     if input_tensor is None:
         input_tensor = Input(input_shape)
+
+    if pooling is None:
+        pooling = 'avg'
 
     with K.name_scope('stem'):
         cur = Convolution2D(num_stem_filters, 3, kernel_initializer='he_normal', padding='same')(input_tensor)
@@ -168,12 +184,17 @@ def NASNetA(include_top=True,
             cur = NormalCell(num_filters)(cur, prev)
 
     with K.name_scope('final_layer'):
-        x = Activation('relu')(cur)
-        outputs = GlobalAveragePooling2D()
+        x = Activation('relu', name='last_relu')(cur)
+        x = Dropout(rate=dropout_rate)(x)
 
         if include_top:
-            x = Dropout(rate=dropout_rate)(x)
+            x = GlobalAveragePooling2D(name='avg_pool')(x)
             outputs = Dense(num_classes, activation='softmax', name='predictions')(x)
+        else:
+            if pooling == 'avg':
+                outputs = GlobalAveragePooling2D(name='avg_pool')(x)
+            elif pooling == 'max':
+                outputs = GlobalMaxPooling2D(name='max_pool')(x)
 
     if input_tensor is not None:
         inputs = get_source_inputs(input_tensor)
