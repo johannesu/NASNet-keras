@@ -68,21 +68,27 @@ class Fit:
             return x
 
     def __call__(self, prev, cur):
-        diff = int(prev.shape[2]) - int(cur.shape[2])
 
-        with K.name_scope('fit_prev'):
-            if diff > 0:
-                prev = self.half_shape(prev)
-
-            prev = self.squeeze(prev, 'prev')
-
-        with K.name_scope('fit_cur'):
-            if diff < 0:
-                cur = self.half_shape(cur)
-
+        if prev is None:
             cur = self.squeeze(cur, 'cur')
+            return cur, cur
 
-        return prev, cur
+        else:
+            diff = int(prev.shape[2]) - int(cur.shape[2])
+
+            with K.name_scope('fit_prev'):
+                if diff > 0:
+                    prev = self.half_shape(prev)
+
+                prev = self.squeeze(prev, 'prev')
+
+            with K.name_scope('fit_cur'):
+                if diff < 0:
+                    cur = self.half_shape(cur)
+
+                cur = self.squeeze(cur, 'cur')
+
+            return prev, cur
 
 
 class NormalCell:
@@ -168,11 +174,11 @@ def NASNetA(include_top=True,
     if pooling is None:
         pooling = 'avg'
 
+    prev = None
+
     with K.name_scope('stem'):
         cur = Convolution2D(num_stem_filters, 3, kernel_initializer='he_normal', padding='same')(input_tensor)
         cur = BatchNormalization()(cur)
-
-        prev = cur
 
     num_filters = int(penultimate_filters / ((2 ** num_reduction_cells) * 6))
 
