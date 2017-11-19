@@ -190,10 +190,36 @@ class ReductionCell:
             return Concatenate()([add_2, add_3, add_4, add_5])
 
 
+class AuxiliaryTop:
+    def __init__(self, classes):
+        self.classes = classes
+
+    def __call__(self, x):
+        with K.name_scope('auxiliary_output'):
+            x = Activation('relu')(x)
+            x = AveragePooling2D(5, strides=3, padding='valid')(x)
+            x = Convolution2D(128, kernel_size=1, padding='same',
+                              kernel_initializer='he_normal', use_bias=False, name='aux_conv1')(x)
+            x = BatchNormalization(name='aux_bn1')(x)
+
+            x = Activation('relu')(x)
+            x = Convolution2D(768, kernel_size=int(x.shape[2]), padding='valid',
+                              kernel_initializer='he_normal', use_bias=False, name='aux_conv2')(x)
+            x = BatchNormalization(name='aux_bn2')(x)
+
+            x = Activation('relu')(x)
+            x = GlobalAveragePooling2D()(x)
+
+            x = Dense(self.classes, activation='softmax', name='aux_output')(x)
+
+        return x
+
+
 def NASNetA(include_top=True,
             input_tensor=None,
             input_shape=None,
             pooling=None,
+            add_aux_output=False,
             stem=None,
             stem_filters=96,
             num_cell_repeats=18,
@@ -201,6 +227,8 @@ def NASNetA(include_top=True,
             num_classes=10,
             num_reduction_cells=2,
             dropout_rate=0.5) -> Model:
+    aux_output = None
+
     if input_tensor is None:
         input_tensor = Input(input_shape)
 
@@ -214,6 +242,9 @@ def NASNetA(include_top=True,
     prev, cur = stem(filters=filters, stem_filters=stem_filters)(input_tensor)
 
     for repeat in range(num_reduction_cells + 1):
+        if repeat == num_reduction_cells and add_aux_output:
+            aux_output = AuxiliaryTop(num_classes)(cur)
+
         if repeat > 0:
             filters *= 2
             prev, cur = cur, prev
@@ -244,42 +275,49 @@ def NASNetA(include_top=True,
     else:
         inputs = input_tensor
 
-    return Model(inputs, outputs, name='NASNet-A_{}@{}'.format(num_cell_repeats, penultimate_filters))
+    model_name = 'NASNet-A_{}@{}'.format(num_cell_repeats, penultimate_filters)
+    if add_aux_output:
+        return Model(inputs, [outputs, aux_output], name='{}_with_auxiliary_output'.format(model_name))
+    else:
+        return Model(inputs, outputs, name=model_name)
 
 
-def cifar10(include_top=True, input_tensor=None):
+def cifar10(include_top=True, input_tensor=None, add_aux_output=False):
     """Table 1: CIFAR-10: 6 @ 768, 3.3M parameters"""
 
     return NASNetA(include_top=include_top,
                    input_tensor=input_tensor,
                    input_shape=(32, 32, 3),
                    num_cell_repeats=6,
+                   add_aux_output=add_aux_output,
                    stem=CifarStem,
                    stem_filters=96,
                    penultimate_filters=768,
                    num_classes=10)
 
 
-def large(include_top=True, input_tensor=None):
+def large(include_top=True, input_tensor=None, add_aux_output=False):
     """Table 2: NASNet-A (6 @ 4032), 88.9M parameters"""
 
     return NASNetA(include_top=include_top,
                    input_tensor=input_tensor,
                    input_shape=(331, 331, 3),
                    num_cell_repeats=6,
+                   add_aux_output=add_aux_output,
                    stem=ImagenetStem,
                    stem_filters=96,
                    penultimate_filters=4032,
                    num_classes=1000)
 
 
-def mobile(include_top=True, input_tensor=None):
+def mobile(include_top=True, input_tensor=None, add_aux_output=False):
     """Table 3: NASNet-A (4 @ 1056), 5.3M parameters"""
 
     return NASNetA(include_top=include_top,
                    input_tensor=input_tensor,
                    input_shape=(224, 224, 3),
                    num_cell_repeats=4,
+                   add_aux_output=add_aux_output,
                    stem=ImagenetStem,
                    stem_filters=32,
                    penultimate_filters=1056,
