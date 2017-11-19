@@ -195,6 +195,9 @@ def NASNetA(include_top=True,
                 outputs = GlobalAveragePooling2D(name='avg_pool')(x)
             elif pooling == 'max':
                 outputs = GlobalMaxPooling2D(name='max_pool')(x)
+            else:
+                outputs = None
+                raise Exception('Supported options for pooling: `avg` or `max` given pooling: {}'.format(pooling))
 
     if input_tensor is not None:
         inputs = get_source_inputs(input_tensor)
