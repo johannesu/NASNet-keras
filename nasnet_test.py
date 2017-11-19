@@ -1,5 +1,8 @@
-import unittest
+import logging
 
+logging.getLogger('tensorflow').setLevel(logging.WARNING)
+
+import unittest
 import nasnet
 
 
