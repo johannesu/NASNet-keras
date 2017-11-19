@@ -8,6 +8,18 @@ from keras.layers import AveragePooling2D, MaxPooling2D, Add, Concatenate
 from keras.layers import Convolution2D, GlobalAveragePooling2D, Dense
 
 
+class CifarStem:
+    def __init__(self, filters=96):
+        self.filters = filters
+
+    def __call__(self, x):
+        with K.name_scope('cifar-stem'):
+            x = Convolution2D(self.filters, 3, kernel_initializer='he_normal', padding='same')(x)
+            x = BatchNormalization()(x)
+
+        return None, x
+
+
 class Separable:
     def __init__(self, filters, kernel_size, strides=1):
         self.filters = filters
@@ -162,7 +174,7 @@ def NASNetA(include_top=True,
             input_tensor=None,
             input_shape=None,
             pooling=None,
-            num_stem_filters=96,
+            stem=None,
             num_cell_repeats=18,
             penultimate_filters=768,
             num_classes=10,
@@ -174,11 +186,10 @@ def NASNetA(include_top=True,
     if pooling is None:
         pooling = 'avg'
 
-    prev = None
+    if stem is None:
+        stem = CifarStem()
 
-    with K.name_scope('stem'):
-        cur = Convolution2D(num_stem_filters, 3, kernel_initializer='he_normal', padding='same')(input_tensor)
-        cur = BatchNormalization()(cur)
+    prev, cur = stem(input_tensor)
 
     num_filters = int(penultimate_filters / ((2 ** num_reduction_cells) * 6))
 
@@ -216,12 +227,17 @@ def NASNetA(include_top=True,
     return Model(inputs, outputs, name='NASNet-A_{}@{}'.format(num_cell_repeats, penultimate_filters))
 
 
-if __name__ == '__main__':
-    # Table 1: CIFAR-10: 6 @ 768
-    model = NASNetA(input_shape=(32, 32, 3),
-                    num_stem_filters=96,
-                    num_cell_repeats=6,
-                    penultimate_filters=768,
-                    num_classes=10)
+def cifar10(include_top=True, input_tensor=None):
+    """Table 1: CIFAR-10: 6 @ 768"""
+    return NASNetA(include_top=include_top,
+                   input_tensor=input_tensor,
+                   input_shape=(32, 32, 3),
+                   num_cell_repeats=6,
+                   stem=CifarStem(),
+                   penultimate_filters=768,
+                   num_classes=10)
 
-    print(model.summary())
+
+if __name__ == '__main__':
+    model = cifar10()
+    model.summary()
