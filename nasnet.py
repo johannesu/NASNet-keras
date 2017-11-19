@@ -43,7 +43,7 @@ class Fit:
     def squeeze(self, x, name):
         with K.name_scope('squeeze_{}_to_{}'.format(name, self.filters)):
             x = Activation('relu')(x)
-            x = Convolution2D(self.filters, kernel_size=1)(x)
+            x = Convolution2D(self.filters, kernel_size=1, kernel_initializer='he_normal')(x)
             x = BatchNormalization()(x)
 
         return x
@@ -51,7 +51,7 @@ class Fit:
     def half_shape(self, x):
         with K.name_scope('half_shape'):
             x = AveragePooling2D(pool_size=(2, 2), strides=(2, 2))(x)
-            x = Convolution2D(self.filters // 2, kernel_size=1)(x)
+            x = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal')(x)
 
             return x
 
