@@ -4,13 +4,36 @@ logging.getLogger('tensorflow').setLevel(logging.WARNING)
 
 import unittest
 import nasnet
+import keras.backend as K
 
 
-class NumParametersTest(unittest.TestCase):
+class ModelTest(unittest.TestCase):
     def check_parameter_count(self, model, target_in_m):
         count = model.count_params() / 10 ** 6
         msg = '{} params #{}M suppose to be #{}M.'.format(model.name, count, target_in_m)
         self.assertAlmostEqual(target_in_m, count, msg=msg, delta=0.1)
 
+    def check_penultimate_shape(self, model, target_shape):
+        layer = model.get_layer('last_relu')
+
+        if K.image_data_format() == 'channels_first':
+            shape = layer.input_shape[2:]
+        else:
+            shape = layer.input_shape[1:3]
+
+        self.assertEqual(shape, target_shape)
+
     def test_cifar_10(self):
-        self.check_parameter_count(nasnet.cifar10(), 3.3)
+        model = nasnet.cifar10()
+        self.check_parameter_count(model, 3.3)
+        self.check_penultimate_shape(model, (8, 8))
+
+    def test_mobile(self):
+        model = nasnet.mobile()
+        self.check_parameter_count(model, 5.3)
+        self.check_penultimate_shape(model, (7, 7))
+
+    def test_large(self):
+        model = nasnet.large()
+        self.check_parameter_count(model, 88.9)
+        self.check_penultimate_shape(model, (11, 11))

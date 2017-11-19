@@ -9,15 +9,32 @@ from keras.layers import Convolution2D, GlobalAveragePooling2D, Dense
 
 
 class CifarStem:
-    def __init__(self, filters=96):
-        self.filters = filters
+    def __init__(self, stem_filters, filters):
+        self.stem_filters = stem_filters
 
     def __call__(self, x):
         with K.name_scope('cifar-stem'):
-            x = Convolution2D(self.filters, 3, kernel_initializer='he_normal', padding='same', use_bias=False)(x)
+            x = Convolution2D(self.stem_filters, 3, kernel_initializer='he_normal', padding='same', use_bias=False)(x)
             x = BatchNormalization()(x)
 
         return None, x
+
+
+class ImagenetStem:
+    def __init__(self, stem_filters, filters):
+        self.stem_filters = stem_filters
+        self.filters = filters
+
+    def __call__(self, x):
+        with K.name_scope('imagenet-stem'):
+            x = Convolution2D(self.stem_filters, 3, strides=2,
+                              kernel_initializer='he_normal', padding='valid', use_bias=False)(x)
+            x = BatchNormalization()(x)
+
+            prev = ReductionCell(self.filters // 4)(None, x)
+            cur = ReductionCell(self.filters // 2)(x, prev)
+
+        return prev, cur
 
 
 class Separable:
@@ -30,7 +47,7 @@ class Separable:
         with K.name_scope('Sep_{0}x{0}_stride_{1}'.format(self.kernel_size,
                                                           self.strides)):
             for repeat in range(2):
-                strides = self.strides if repeat == 1 else 1
+                strides = self.strides if repeat == 0 else 1
 
                 x = Activation('relu')(x)
                 x = SeparableConv2D(self.filters,
@@ -44,65 +61,63 @@ class Separable:
         return x
 
 
-class Fit:
-    """Make the cell outputs compatible
-
-    1. Use 1x1 convolutions to squeeze the input channels to match the cells filter count
-    2. Use 2x2 average pooling to reduce layer shape if they do not match
-    """
+class SqueezeChannels:
+    """Use 1x1 convolutions to squeeze the input channels to match the cells filter count"""
 
     def __init__(self, filters):
         self.filters = filters
 
-    def squeeze(self, x, name):
-        with K.name_scope('squeeze_{}_to_{}'.format(name, self.filters)):
-            x = Activation('relu')(x)
-            x = Convolution2D(self.filters, kernel_size=1, kernel_initializer='he_normal', use_bias=False)(x)
-            x = BatchNormalization()(x)
+    def __call__(self, x):
+        x = Activation('relu')(x)
+        x = Convolution2D(self.filters, kernel_size=1, kernel_initializer='he_normal', use_bias=False)(x)
+        x = BatchNormalization()(x)
 
         return x
 
-    def half_shape(self, x):
-        concat_axis = 1 if K.image_data_format() == 'channels_first' else -1
 
-        with K.name_scope('half_shape'):
-            p1 = AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid')(x)
-            p1 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal',
-                               padding='same', use_bias=False)(p1)
+class Squeeze:
+    """Use 1x1 convolutions to squeeze the input channels to match the cells filter count"""
 
-            p2 = ZeroPadding2D(padding=((0, 1), (0, 1)))(x)
-            p2 = Cropping2D(cropping=((1, 0), (1, 0)))(p2)
-            p2 = AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid')(p2)
-            p2 = Convolution2D(self.filters // 2, kernel_size=1,
-                               kernel_initializer='he_normal', padding='same', use_bias=False)(p2)
+    def __init__(self, filters):
+        self.filters = filters
 
-            x = Concatenate(axis=concat_axis)([p1, p2])
-            x = BatchNormalization()(x)
+    def __call__(self, x):
+        with K.name_scope('filter_squeeze'):
+            x = Activation('relu')(x)
+            return Convolution2D(self.filters, 1, kernel_initializer='he_normal', use_bias=False)(x)
 
-            return x
 
-    def __call__(self, prev, cur):
+class Fit:
+    """Make the cell outputs compatible"""
 
-        if prev is None:
-            cur = self.squeeze(cur, 'cur')
-            return cur, cur
+    def __init__(self, filters, target_layer):
+        self.filters = filters
+        self.target_layer = target_layer
 
+    def __call__(self, x):
+        if x is None:
+            return self.target_layer
+
+        elif int(x.shape[2]) != int(self.target_layer.shape[2]):
+            concat_axis = 1 if K.image_data_format() == 'channels_first' else -1
+
+            with K.name_scope('reduce_shape'):
+                p1 = AveragePooling2D(pool_size=1, strides=(2, 2), padding='valid')(x)
+                p1 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal',
+                                   padding='same', use_bias=False)(p1)
+
+                p2 = ZeroPadding2D(padding=((0, 1), (0, 1)))(x)
+                p2 = Cropping2D(cropping=((1, 0), (1, 0)))(p2)
+                p2 = AveragePooling2D(pool_size=1, strides=(2, 2), padding='valid')(p2)
+                p2 = Convolution2D(self.filters // 2, kernel_size=1,
+                                   kernel_initializer='he_normal', padding='same', use_bias=False)(p2)
+
+                x = Concatenate(axis=concat_axis)([p1, p2])
+                x = BatchNormalization()(x)
+
+                return x
         else:
-            diff = int(prev.shape[2]) - int(cur.shape[2])
-
-            with K.name_scope('fit_prev'):
-                if diff > 0:
-                    prev = self.half_shape(prev)
-
-                prev = self.squeeze(prev, 'prev')
-
-            with K.name_scope('fit_cur'):
-                if diff < 0:
-                    cur = self.half_shape(cur)
-
-                cur = self.squeeze(cur, 'cur')
-
-            return prev, cur
+            return Squeeze(self.filters)(x)
 
 
 class NormalCell:
@@ -112,7 +127,9 @@ class NormalCell:
     def __call__(self, prev, cur):
         with K.name_scope('normal'):
             output = list()
-            prev, cur = Fit(self.filters)(prev, cur)
+
+            cur = Squeeze(self.filters)(cur)
+            prev = Fit(self.filters, cur)(prev)
 
             with K.name_scope('block_1'):
                 output.append(Add()([Separable(self.filters, 3)(cur),
@@ -145,7 +162,8 @@ class ReductionCell:
 
     def __call__(self, prev, cur):
         with K.name_scope('reduce'):
-            prev, cur = Fit(self.filters)(prev, cur)
+            prev = Fit(self.filters, cur)(prev)
+            cur = Squeeze(self.filters)(cur)
 
             # Full in
             with K.name_scope('block_1'):
@@ -177,6 +195,7 @@ def NASNetA(include_top=True,
             input_shape=None,
             pooling=None,
             stem=None,
+            stem_filters=96,
             num_cell_repeats=18,
             penultimate_filters=768,
             num_classes=10,
@@ -189,21 +208,20 @@ def NASNetA(include_top=True,
         pooling = 'avg'
 
     if stem is None:
-        stem = CifarStem()
+        stem = ImagenetStem
 
-    prev, cur = stem(input_tensor)
-
-    num_filters = int(penultimate_filters / ((2 ** num_reduction_cells) * 6))
+    filters = int(penultimate_filters / ((2 ** num_reduction_cells) * 6))
+    prev, cur = stem(filters=filters, stem_filters=stem_filters)(input_tensor)
 
     for repeat in range(num_reduction_cells + 1):
         if repeat > 0:
-            num_filters *= 2
+            filters *= 2
             prev, cur = cur, prev
-            cur = ReductionCell(num_filters)(cur, prev)
+            cur = ReductionCell(filters)(cur, prev)
 
         for cell_index in range(num_cell_repeats):
             prev, cur = cur, prev
-            cur = NormalCell(num_filters)(cur, prev)
+            cur = NormalCell(filters)(cur, prev)
 
     with K.name_scope('final_layer'):
         x = Activation('relu', name='last_relu')(cur)
@@ -230,16 +248,44 @@ def NASNetA(include_top=True,
 
 
 def cifar10(include_top=True, input_tensor=None):
-    """Table 1: CIFAR-10: 6 @ 768"""
+    """Table 1: CIFAR-10: 6 @ 768, 3.3M parameters"""
+
     return NASNetA(include_top=include_top,
                    input_tensor=input_tensor,
                    input_shape=(32, 32, 3),
                    num_cell_repeats=6,
-                   stem=CifarStem(),
+                   stem=CifarStem,
+                   stem_filters=96,
                    penultimate_filters=768,
                    num_classes=10)
 
 
+def large(include_top=True, input_tensor=None):
+    """Table 2: NASNet-A (6 @ 4032), 88.9M parameters"""
+
+    return NASNetA(include_top=include_top,
+                   input_tensor=input_tensor,
+                   input_shape=(331, 331, 3),
+                   num_cell_repeats=6,
+                   stem=ImagenetStem,
+                   stem_filters=96,
+                   penultimate_filters=4032,
+                   num_classes=1000)
+
+
+def mobile(include_top=True, input_tensor=None):
+    """Table 3: NASNet-A (4 @ 1056), 5.3M parameters"""
+
+    return NASNetA(include_top=include_top,
+                   input_tensor=input_tensor,
+                   input_shape=(224, 224, 3),
+                   num_cell_repeats=4,
+                   stem=ImagenetStem,
+                   stem_filters=32,
+                   penultimate_filters=1056,
+                   num_classes=1000)
+
+
 if __name__ == '__main__':
-    model = cifar10()
+    model = large()
     model.summary()
