@@ -68,18 +68,21 @@ class Fit:
             return x
 
     def __call__(self, prev, cur):
-        with K.name_scope('fit'):
-            diff = int(prev.shape[2]) - int(cur.shape[2])
+        diff = int(prev.shape[2]) - int(cur.shape[2])
 
+        with K.name_scope('fit_prev'):
             if diff > 0:
                 prev = self.half_shape(prev)
-            elif diff < 0:
-                cur = self.half_shape(cur)
 
             prev = self.squeeze(prev, 'prev')
+
+        with K.name_scope('fit_cur'):
+            if diff < 0:
+                cur = self.half_shape(cur)
+
             cur = self.squeeze(cur, 'cur')
 
-            return prev, cur
+        return prev, cur
 
 
 class NormalCell:
