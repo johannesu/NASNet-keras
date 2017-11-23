@@ -1,4 +1,6 @@
 """Implementation of NASNet-A"""
+from __future__ import division
+
 from keras import Input, Model
 from keras import backend as K
 from keras.engine import get_source_inputs
@@ -226,7 +228,7 @@ def NASNetA(include_top=True,
             penultimate_filters=768,
             num_classes=10,
             num_reduction_cells=2,
-            dropout_rate=0.5) -> Model:
+            dropout_rate=0.5):
     aux_output = None
 
     if input_tensor is None:
