@@ -1,2 +1,4 @@
 .idea
-events.out.tfevents.*
+.ipynb_checkpoints/*
+events.out.tfevents.
+__pycache__

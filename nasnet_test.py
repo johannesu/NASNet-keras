@@ -29,7 +29,7 @@ class ModelTest(unittest.TestCase):
         self.check_parameter_count(model, 3.3)
         self.check_penultimate_shape(model, (8, 8))
 
-        aux_model = nasnet.cifar10(add_aux_output=True)
+        aux_model = nasnet.cifar10(aux_output=True)
         self.check_parameter_count(aux_model, 4.9)
         self.assertEqual(len(aux_model.output), 2)
 
@@ -38,7 +38,7 @@ class ModelTest(unittest.TestCase):
         self.check_parameter_count(model, 5.3)
         self.check_penultimate_shape(model, (7, 7))
 
-        aux_model = nasnet.mobile(add_aux_output=True)
+        aux_model = nasnet.mobile(aux_output=True)
         self.check_parameter_count(aux_model, 7.7)
         self.assertEqual(len(aux_model.output), 2)
 
@@ -47,6 +47,6 @@ class ModelTest(unittest.TestCase):
         self.check_parameter_count(model, 88.9)
         self.check_penultimate_shape(model, (11, 11))
 
-        aux_model = nasnet.large(add_aux_output=True)
+        aux_model = nasnet.large(aux_output=True)
         self.check_parameter_count(aux_model, 93.5)
         self.assertEqual(len(aux_model.output), 2)
