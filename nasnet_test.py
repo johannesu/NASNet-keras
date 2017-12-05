@@ -48,5 +48,5 @@ class ModelTest(unittest.TestCase):
         self.check_penultimate_shape(model, (11, 11))
 
         aux_model = nasnet.large(add_aux_output=True)
-        self.check_parameter_count(aux_model, 93.4)
+        self.check_parameter_count(aux_model, 93.5)
         self.assertEqual(len(aux_model.output), 2)

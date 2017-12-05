@@ -77,18 +77,6 @@ class SqueezeChannels:
         return x
 
 
-class Squeeze:
-    """Use 1x1 convolutions to squeeze the input channels to match the cells filter count"""
-
-    def __init__(self, filters):
-        self.filters = filters
-
-    def __call__(self, x):
-        with K.name_scope('filter_squeeze'):
-            x = Activation('relu')(x)
-            return Convolution2D(self.filters, 1, kernel_initializer='he_normal', use_bias=False)(x)
-
-
 class Fit:
     """Make the cell outputs compatible"""
 
@@ -119,7 +107,7 @@ class Fit:
 
                 return x
         else:
-            return Squeeze(self.filters)(x)
+            return SqueezeChannels(self.filters)(x)
 
 
 class NormalCell:
@@ -130,7 +118,7 @@ class NormalCell:
         with K.name_scope('normal'):
             output = list()
 
-            cur = Squeeze(self.filters)(cur)
+            cur = SqueezeChannels(self.filters)(cur)
             prev = Fit(self.filters, cur)(prev)
 
             with K.name_scope('block_1'):
@@ -164,8 +152,8 @@ class ReductionCell:
 
     def __call__(self, prev, cur):
         with K.name_scope('reduce'):
+            cur = SqueezeChannels(self.filters)(cur)
             prev = Fit(self.filters, cur)(prev)
-            cur = Squeeze(self.filters)(cur)
 
             # Full in
             with K.name_scope('block_1'):
