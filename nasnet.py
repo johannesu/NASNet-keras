@@ -92,6 +92,8 @@ class Fit:
             concat_axis = 1 if K.image_data_format() == 'channels_first' else -1
 
             with K.name_scope('reduce_shape'):
+                x = Activation('relu')(x)
+
                 p1 = AveragePooling2D(pool_size=1, strides=(2, 2), padding='valid')(x)
                 p1 = Convolution2D(self.filters // 2, kernel_size=1, kernel_initializer='he_normal',
                                    padding='same', use_bias=False)(p1)
