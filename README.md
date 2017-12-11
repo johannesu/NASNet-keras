@@ -14,31 +14,23 @@ Googles' tensorflow-slim implementation: [https://github.com/tensorflow/models/t
 
 
 ## Pretrained weights
-Weights  trained with the reference implementation can be convert to this model.
-This includes the two pretrained models provided by Google [https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet](https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet).
+Models trained with the reference implementation can be convert to this model.
+This includes the two trained models provided by Google [https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet](https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet).
 
-* Setup models, download pretrained weights and save weights to Keras compatible .h5 file:
+* Setup models, download tensorflow checkpoints and convert them to Keras.
 
 ```python
 import nasnet
 
 # NASNet-A_Mobile_224
 model = nasnet.mobile(load_weights=True)
-model.save_weights('mobile.h5')
 
 # NASNet-A_Large_331
 model = nasnet.large(load_weights=True)
-model.save_weights('large.h5')
 ```
 
-* Load Keras weights:
+Converting the checkpoints can take a few minutes, the work is cached and will be fast the second call.
 
-```python
-import nasnet
-
-model = nasnet.mobile()
-model.load_weights('mobile.h5')
-```
 
 ### Model visualization
 `NASNet-A (6 @ 768)` from the paper, visualized in tensorboard:

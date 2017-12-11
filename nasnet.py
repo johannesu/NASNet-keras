@@ -3,7 +3,6 @@ from __future__ import division
 
 import os
 
-
 import tensorflow as tf
 from keras import Input, Model, layers
 from keras import backend as K
@@ -39,6 +38,54 @@ def preprocess_tf(image, size=224, central_fraction=0.875):
     image = tf.multiply(image, 2.0)
 
     return image
+
+
+def load_weights_from_tf_checkpoint(model, checkpoint_file):
+    print('Load weights from tensorflow checkpoint')
+    progbar = Progbar(target=len(model.layers))
+
+    reader = tf.train.NewCheckpointReader(checkpoint_file)
+    for index, layer in enumerate(model.layers):
+        progbar.update(current=index)
+
+        if isinstance(layer, layers.convolutional.SeparableConv2D):
+            depthwise = reader.get_tensor('{}/depthwise_weights'.format(layer.name))
+            pointwise = reader.get_tensor('{}/pointwise_weights'.format(layer.name))
+            layer.set_weights([depthwise, pointwise])
+        elif isinstance(layer, layers.convolutional.Convolution2D):
+            weights = reader.get_tensor('{}/weights'.format(layer.name))
+
+            layer.set_weights([weights])
+        elif isinstance(layer, layers.BatchNormalization):
+            beta = reader.get_tensor('{}/beta'.format(layer.name))
+            gamma = reader.get_tensor('{}/gamma'.format(layer.name))
+            moving_mean = reader.get_tensor('{}/moving_mean'.format(layer.name))
+            moving_variance = reader.get_tensor('{}/moving_variance'.format(layer.name))
+
+            layer.set_weights([gamma, beta, moving_mean, moving_variance])
+        elif isinstance(layer, layers.Dense):
+            weights = reader.get_tensor('{}/weights'.format(layer.name))
+            biases = reader.get_tensor('{}/biases'.format(layer.name))
+
+            layer.set_weights([weights[:, 1:], biases[1:]])
+
+
+def load_pretrained_weights(model, fname, origin, md5_hash, cache_dir=None):
+    """Download and convert tensorflow checkpoints"""
+
+    if cache_dir is None:
+        cache_dir = os.path.expanduser(os.path.join('~', '.keras', 'models'))
+
+    weight_path = os.path.join(cache_dir, '{}_{}_{}.h5'.format(model.name, md5_hash, K.image_data_format()))
+
+    if os.path.exists(weight_path):
+        model.load_weights(weight_path)
+    else:
+        path = get_file(fname, origin=origin, extract=True, md5_hash=md5_hash, cache_dir=cache_dir)
+        checkpoint_file = os.path.join(path, '..', 'model.ckpt')
+        load_weights_from_tf_checkpoint(model, checkpoint_file)
+
+        model.save_weights(weight_path)
 
 
 class CifarStem:
@@ -313,6 +360,8 @@ def NASNetA(include_top=True,
             x = GlobalAveragePooling2D(name='avg_pool')(x)
             x = Dropout(rate=dropout_rate)(x)
             outputs = Dense(num_classes, activation='softmax', name='final_layer/FC')(x)
+
+            model_suffix = 'with_top'
         else:
             if pooling == 'avg':
                 outputs = GlobalAveragePooling2D(name='avg_pool')(x)
@@ -322,46 +371,18 @@ def NASNetA(include_top=True,
                 outputs = None
                 raise Exception('Supported options for pooling: `avg` or `max` given pooling: {}'.format(pooling))
 
+            model_suffix = 'no_top'
+
     if input_tensor is not None:
         inputs = get_source_inputs(input_tensor)
     else:
         inputs = input_tensor
 
-    model_name = 'NASNet-A_{}@{}'.format(num_cell_repeats, penultimate_filters)
+    model_name = 'NASNet-A_{}@{}_{}_{}'.format(num_cell_repeats, penultimate_filters, num_classes, model_suffix)
     if add_aux_output:
         return Model(inputs, [outputs, aux_outputs], name='{}_with_auxiliary_output'.format(model_name))
     else:
         return Model(inputs, outputs, name=model_name)
-
-
-def load_weights_from_tf_checkpoint(model, checkpoint_file):
-    print('Load weights from tensorflow checkpoint')
-    progbar = Progbar(target=len(model.layers))
-
-    reader = tf.train.NewCheckpointReader(checkpoint_file)
-    for index, layer in enumerate(model.layers):
-        progbar.update(current=index)
-
-        if isinstance(layer, layers.convolutional.SeparableConv2D):
-            depthwise = reader.get_tensor('{}/depthwise_weights'.format(layer.name))
-            pointwise = reader.get_tensor('{}/pointwise_weights'.format(layer.name))
-            layer.set_weights([depthwise, pointwise])
-        elif isinstance(layer, layers.convolutional.Convolution2D):
-            weights = reader.get_tensor('{}/weights'.format(layer.name))
-
-            layer.set_weights([weights])
-        elif isinstance(layer, layers.BatchNormalization):
-            beta = reader.get_tensor('{}/beta'.format(layer.name))
-            gamma = reader.get_tensor('{}/gamma'.format(layer.name))
-            moving_mean = reader.get_tensor('{}/moving_mean'.format(layer.name))
-            moving_variance = reader.get_tensor('{}/moving_variance'.format(layer.name))
-
-            layer.set_weights([gamma, beta, moving_mean, moving_variance])
-        elif isinstance(layer, layers.Dense):
-            weights = reader.get_tensor('{}/weights'.format(layer.name))
-            biases = reader.get_tensor('{}/biases'.format(layer.name))
-
-            layer.set_weights([weights[:, 1:], biases[1:]])
 
 
 def cifar10(include_top=True, input_tensor=None, aux_output=False):
@@ -393,10 +414,10 @@ def large(include_top=True, input_tensor=None, aux_output=False, load_weights=Fa
 
     if load_weights:
         origin = 'https://storage.googleapis.com/download.tensorflow.org/models/nasnet-a_large_04_10_2017.tar.gz'
-        path = get_file('nasnet_large', origin=origin, extract=True, md5_hash='5286bdbb29bab27c4d3431c70f8becf9')
-        checkpoint_file = os.path.join(path, '..', 'model.ckpt')
+        fname = 'nasnet_large'
+        md5_hash = '5286bdbb29bab27c4d3431c70f8becf9'
 
-        load_weights_from_tf_checkpoint(model, checkpoint_file)
+        load_pretrained_weights(model, fname=fname, origin=origin, md5_hash=md5_hash)
 
     return model
 
@@ -416,10 +437,10 @@ def mobile(include_top=True, input_tensor=None, aux_output=False, load_weights=F
 
     if load_weights:
         origin = 'https://storage.googleapis.com/download.tensorflow.org/models/nasnet-a_mobile_04_10_2017.tar.gz'
-        path = get_file('nasnet_mobile', origin=origin, extract=True, md5_hash='7777886f3de3d733d3a6bf8b80e63555')
-        checkpoint_file = os.path.join(path, '..', 'model.ckpt')
+        fname = 'nasnet_mobile'
+        md5_hash = '7777886f3de3d733d3a6bf8b80e63555'
 
-        load_weights_from_tf_checkpoint(model, checkpoint_file)
+        load_pretrained_weights(model, fname=fname, origin=origin, md5_hash=md5_hash)
 
     return model
 
