@@ -12,6 +12,11 @@ from keras.layers import AveragePooling2D, MaxPooling2D, Add, Concatenate
 from keras.layers import Convolution2D, GlobalAveragePooling2D, Dense
 from keras.layers import ZeroPadding2D, GlobalMaxPooling2D, Cropping2D
 from keras.utils import get_file, Progbar
+from keras.utils.conv_utils import convert_kernel
+
+
+def get_channel_axis():
+    return 1 if K.image_data_format() == 'channels_first' else -1
 
 
 def preprocess(image, size):
@@ -51,9 +56,17 @@ def load_weights_from_tf_checkpoint(model, checkpoint_file):
         if isinstance(layer, layers.convolutional.SeparableConv2D):
             depthwise = reader.get_tensor('{}/depthwise_weights'.format(layer.name))
             pointwise = reader.get_tensor('{}/pointwise_weights'.format(layer.name))
+
+            if K.image_data_format() == 'channels_first':
+                depthwise = convert_kernel(depthwise)
+                pointwise = convert_kernel(pointwise)
+
             layer.set_weights([depthwise, pointwise])
         elif isinstance(layer, layers.convolutional.Convolution2D):
             weights = reader.get_tensor('{}/weights'.format(layer.name))
+
+            if K.image_data_format() == 'channels_first':
+                weights = convert_kernel(weights)
 
             layer.set_weights([weights])
         elif isinstance(layer, layers.BatchNormalization):
@@ -95,7 +108,7 @@ class CifarStem:
     def __call__(self, x):
         with K.name_scope('cifar-stem'):
             x = Convolution2D(self.stem_filters, 3, kernel_initializer='he_normal', padding='same', use_bias=False)(x)
-            x = BatchNormalization()(x)
+            x = BatchNormalization(axis=get_channel_axis())(x)
 
         return None, x
 
@@ -110,7 +123,7 @@ class ImagenetStem:
             x = Convolution2D(self.stem_filters, 3, strides=2,
                               kernel_initializer='he_normal', padding='valid', use_bias=False,
                               name='conv0')(x)
-            x = BatchNormalization(name='conv0_bn')(x)
+            x = BatchNormalization(name='conv0_bn', axis=get_channel_axis())(x)
 
             prev = ReductionCell(self.filters // 4, prefix='cell_stem_0')(None, x)
             cur = ReductionCell(self.filters // 2, prefix='cell_stem_1')(x, prev)
@@ -142,7 +155,7 @@ class Separable:
                                     name=name)(x)
 
                 name = '{0}/bn_sep_{1}x{1}_{2}'.format(self.prefix, self.kernel_size, repeat)
-                x = BatchNormalization(name=name)(x)
+                x = BatchNormalization(name=name, axis=get_channel_axis())(x)
 
         return x
 
@@ -160,7 +173,7 @@ class SqueezeChannels:
             x = Activation('relu')(x)
             x = Convolution2D(self.filters, 1, kernel_initializer='he_normal', use_bias=False,
                               name=self.conv_name)(x)
-            x = BatchNormalization(name=self.bn_name)(x)
+            x = BatchNormalization(name=self.bn_name, axis=get_channel_axis())(x)
 
             return x
 
@@ -178,7 +191,6 @@ class Fit:
             return self.target_layer
 
         elif int(x.shape[2]) != int(self.target_layer.shape[2]):
-            concat_axis = 1 if K.image_data_format() == 'channels_first' else -1
 
             with K.name_scope('reduce_shape'):
                 x = Activation('relu')(x)
@@ -202,8 +214,8 @@ class Fit:
                                    use_bias=False,
                                    name='{}/path2_conv'.format(self.prefix))(p2)
 
-                x = Concatenate(axis=concat_axis)([p1, p2])
-                x = BatchNormalization(name='{}/final_path_bn'.format(self.prefix))(x)
+                x = Concatenate(axis=get_channel_axis())([p1, p2])
+                x = BatchNormalization(name='{}/final_path_bn'.format(self.prefix), axis=get_channel_axis())(x)
 
                 return x
         else:
@@ -244,7 +256,7 @@ class NormalCell:
                 output.append(Add()([Separable(self.filters, 3, prefix='{}/left'.format(prefix))(cur),
                                      cur]))
 
-            return Concatenate()(output)
+            return Concatenate(axis=get_channel_axis())(output)
 
 
 class ReductionCell:
@@ -282,7 +294,7 @@ class ReductionCell:
                 add_4 = Add()([Separable(self.filters, 3, strides=1, prefix='{}/left'.format(prefix))(add_0),
                                MaxPooling2D(3, strides=2, padding='same')(cur)])
 
-            return Concatenate()([add_1, add_2, add_3, add_4])
+            return Concatenate(axis=get_channel_axis())([add_1, add_2, add_3, add_4])
 
 
 class AuxiliaryTop:
@@ -297,13 +309,13 @@ class AuxiliaryTop:
             x = Convolution2D(128, kernel_size=1, padding='same',
                               kernel_initializer='he_normal', use_bias=False,
                               name='{}/proj'.format(self.prefix))(x)
-            x = BatchNormalization(name='{}/aux_bn0'.format(self.prefix))(x)
+            x = BatchNormalization(name='{}/aux_bn0'.format(self.prefix), axis=get_channel_axis())(x)
 
             x = Activation('relu')(x)
             x = Convolution2D(768, kernel_size=int(x.shape[2]), padding='valid',
                               kernel_initializer='he_normal', use_bias=False,
                               name='{}/Conv'.format(self.prefix))(x)
-            x = BatchNormalization(name='{}/aux_bn1'.format(self.prefix))(x)
+            x = BatchNormalization(name='{}/aux_bn1'.format(self.prefix), axis=get_channel_axis())(x)
 
             x = Activation('relu')(x)
             x = GlobalAveragePooling2D()(x)
@@ -388,9 +400,14 @@ def NASNetA(include_top=True,
 def cifar10(include_top=True, input_tensor=None, aux_output=False):
     """Table 1: CIFAR-10: 6 @ 768, 3.3M parameters"""
 
+    if K.image_data_format() == 'channels_first':
+        input_shape = (3, 32, 32)
+    else:
+        input_shape = (32, 32, 3)
+
     return NASNetA(include_top=include_top,
                    input_tensor=input_tensor,
-                   input_shape=(32, 32, 3),
+                   input_shape=input_shape,
                    num_cell_repeats=6,
                    add_aux_output=aux_output,
                    stem=CifarStem,
@@ -402,9 +419,14 @@ def cifar10(include_top=True, input_tensor=None, aux_output=False):
 def large(include_top=True, input_tensor=None, aux_output=False, load_weights=False):
     """Table 2: NASNet-A (6 @ 4032), 88.9M parameters"""
 
+    if K.image_data_format() == 'channels_first':
+        input_shape = (3, 331, 331)
+    else:
+        input_shape = (331, 331, 3)
+
     model = NASNetA(include_top=include_top,
                     input_tensor=input_tensor,
-                    input_shape=(331, 331, 3),
+                    input_shape=input_shape,
                     num_cell_repeats=6,
                     add_aux_output=aux_output,
                     stem=ImagenetStem,
@@ -425,9 +447,14 @@ def large(include_top=True, input_tensor=None, aux_output=False, load_weights=Fa
 def mobile(include_top=True, input_tensor=None, aux_output=False, load_weights=False):
     """Table 3: NASNet-A (4 @ 1056), 5.3M parameters"""
 
+    if K.image_data_format() == 'channels_first':
+        input_shape = (3, 224, 224)
+    else:
+        input_shape = (224, 224, 3)
+
     model = NASNetA(include_top=include_top,
                     input_tensor=input_tensor,
-                    input_shape=(224, 224, 3),
+                    input_shape=input_shape,
                     num_cell_repeats=4,
                     add_aux_output=aux_output,
                     stem=ImagenetStem,

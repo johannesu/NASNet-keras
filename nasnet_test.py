@@ -50,3 +50,12 @@ class ModelTest(unittest.TestCase):
         aux_model = nasnet.large(aux_output=True)
         self.check_parameter_count(aux_model, 93.5)
         self.assertEqual(len(aux_model.output), 2)
+
+    def test_channel_first(self):
+        K.set_image_data_format('channels_first')
+
+        model = nasnet.cifar10()
+        self.check_parameter_count(model, 3.3)
+        self.check_penultimate_shape(model, (8, 8))
+
+        K.set_image_data_format('channels_last')
