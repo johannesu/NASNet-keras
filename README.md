@@ -5,15 +5,35 @@
 [Keras](https://keras.io/) implementation of NASNet-A. The best performing model from the paper [Learning Transferable Architectures for Scalable Image Recognition](https://arxiv.org/abs/1707.07012) [1].
 An extension of [AutoML](https://research.googleblog.com/2017/11/automl-for-large-scale-image.html) [2].
 
-## Getting started
+## Install
+System requirements on Ubuntu 16.04
 
-Look at [demo.ipynb](demo.ipynb).
+```bash
+sudo apt-get install python3-pip python3-tk
+```
 
-## Reference implementation
+Install python requirements and the package
+```bash
+pip3 install https://github.com/johannesu/NASNet-keras/archive/master.zip
+```
+
+You can now use the package in python
+
+```python
+from nasnet import mobile
+model = mobile()
+model.summary()
+```
+
+## Demo
+
+See [demo.ipynb](demo.ipynb).
+
+### Reference implementation
 Googles' tensorflow-slim implementation: [https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet](https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet).
 
 
-## Pretrained weights
+### Pretrained weights
 Models trained with the reference implementation can be convert to this model.
 This includes the two trained models provided by Google [https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet](https://github.com/tensorflow/models/tree/master/research/slim/nets/nasnet).
 

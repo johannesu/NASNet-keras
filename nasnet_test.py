@@ -1,4 +1,5 @@
 from __future__ import division
+
 import logging
 
 logging.getLogger('tensorflow').setLevel(logging.WARNING)
