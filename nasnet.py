@@ -45,7 +45,7 @@ def preprocess_tf(image, size=224, central_fraction=0.875):
     return image
 
 
-def load_weights_from_tf_checkpoint(model, checkpoint_file):
+def load_weights_from_tf_checkpoint(model, checkpoint_file, skip_first_dense):
     print('Load weights from tensorflow checkpoint')
     progbar = Progbar(target=len(model.layers))
 
@@ -80,10 +80,13 @@ def load_weights_from_tf_checkpoint(model, checkpoint_file):
             weights = reader.get_tensor('{}/weights'.format(layer.name))
             biases = reader.get_tensor('{}/biases'.format(layer.name))
 
-            layer.set_weights([weights[:, 1:], biases[1:]])
+            if skip_first_dense:
+                layer.set_weights([weights[:, 1:], biases[1:]])
+            else:
+                layer.set_weights([weights, biases])
 
 
-def load_pretrained_weights(model, fname, origin, md5_hash, cache_dir=None):
+def load_pretrained_weights(model, fname, origin, md5_hash, skip_first_dense=False, cache_dir=None):
     """Download and convert tensorflow checkpoints"""
 
     if cache_dir is None:
@@ -96,7 +99,7 @@ def load_pretrained_weights(model, fname, origin, md5_hash, cache_dir=None):
     else:
         path = get_file(fname, origin=origin, extract=True, md5_hash=md5_hash, cache_dir=cache_dir)
         checkpoint_file = os.path.join(path, '..', 'model.ckpt')
-        load_weights_from_tf_checkpoint(model, checkpoint_file)
+        load_weights_from_tf_checkpoint(model, checkpoint_file, skip_first_dense)
 
         model.save_weights(weight_path)
 
@@ -397,7 +400,7 @@ def NASNetA(include_top=True,
         return Model(inputs, outputs, name=model_name)
 
 
-def cifar10(include_top=True, input_tensor=None, aux_output=False):
+def cifar10(include_top=True, input_tensor=None, aux_output=False, num_classes=10):
     """Table 1: CIFAR-10: 6 @ 768, 3.3M parameters"""
 
     if K.image_data_format() == 'channels_first':
@@ -413,16 +416,22 @@ def cifar10(include_top=True, input_tensor=None, aux_output=False):
                    stem=CifarStem,
                    stem_filters=96,
                    penultimate_filters=768,
-                   num_classes=10)
+                   num_classes=num_classes)
 
 
-def large(include_top=True, input_tensor=None, aux_output=False, load_weights=False):
+def large(include_top=True, input_tensor=None, aux_output=False, load_weights=False, num_classes=1000):
     """Table 2: NASNet-A (6 @ 4032), 88.9M parameters"""
 
     if K.image_data_format() == 'channels_first':
         input_shape = (3, 331, 331)
     else:
         input_shape = (331, 331, 3)
+
+    if include_top and load_weights:
+        assert num_classes in {1000, 1001}, 'Top only trained with 1001 (with background) or 1000 classes.'
+
+    if aux_output and load_weights:
+        assert num_classes in {1000, 1001}, 'Auxiliary output only trained with 1001 (with background) or 1000 classes.'
 
     model = NASNetA(include_top=include_top,
                     input_tensor=input_tensor,
@@ -432,25 +441,35 @@ def large(include_top=True, input_tensor=None, aux_output=False, load_weights=Fa
                     stem=ImagenetStem,
                     stem_filters=96,
                     penultimate_filters=4032,
-                    num_classes=1000)
+                    num_classes=num_classes)
 
     if load_weights:
         origin = 'https://storage.googleapis.com/download.tensorflow.org/models/nasnet-a_large_04_10_2017.tar.gz'
         fname = 'nasnet_large'
         md5_hash = '5286bdbb29bab27c4d3431c70f8becf9'
 
-        load_pretrained_weights(model, fname=fname, origin=origin, md5_hash=md5_hash)
+        load_pretrained_weights(model,
+                                fname=fname,
+                                origin=origin,
+                                md5_hash=md5_hash,
+                                skip_first_dense=num_classes == 1000)
 
     return model
 
 
-def mobile(include_top=True, input_tensor=None, aux_output=False, load_weights=False):
+def mobile(include_top=True, input_tensor=None, aux_output=False, load_weights=False, num_classes=1000):
     """Table 3: NASNet-A (4 @ 1056), 5.3M parameters"""
 
     if K.image_data_format() == 'channels_first':
         input_shape = (3, 224, 224)
     else:
         input_shape = (224, 224, 3)
+
+    if include_top and load_weights:
+        assert num_classes in {1000, 1001}, 'Top only trained with 1001 (with background) or 1000 classes.'
+
+    if aux_output and load_weights:
+        assert num_classes in {1000, 1001}, 'Auxiliary output only trained with 1001 (with background) or 1000 classes.'
 
     model = NASNetA(include_top=include_top,
                     input_tensor=input_tensor,
@@ -460,14 +479,18 @@ def mobile(include_top=True, input_tensor=None, aux_output=False, load_weights=F
                     stem=ImagenetStem,
                     stem_filters=32,
                     penultimate_filters=1056,
-                    num_classes=1000)
+                    num_classes=num_classes)
 
     if load_weights:
         origin = 'https://storage.googleapis.com/download.tensorflow.org/models/nasnet-a_mobile_04_10_2017.tar.gz'
         fname = 'nasnet_mobile'
         md5_hash = '7777886f3de3d733d3a6bf8b80e63555'
 
-        load_pretrained_weights(model, fname=fname, origin=origin, md5_hash=md5_hash)
+        load_pretrained_weights(model,
+                                fname=fname,
+                                origin=origin,
+                                md5_hash=md5_hash,
+                                skip_first_dense=num_classes == 1000)
 
     return model
 
