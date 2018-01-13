@@ -43,10 +43,10 @@ This includes the two trained models provided by Google [https://github.com/tens
 import nasnet
 
 # NASNet-A_Mobile_224
-model = nasnet.mobile(load_weights=True)
+model = nasnet.mobile(weights='imagenet')
 
 # NASNet-A_Large_331
-model = nasnet.large(load_weights=True)
+model = nasnet.large(weights='imagenet')
 ```
 
 Converting the checkpoints can take a few minutes, the work is cached and will be fast the second call.
