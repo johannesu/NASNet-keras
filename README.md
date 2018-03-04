@@ -5,6 +5,30 @@
 [Keras](https://keras.io/) implementation of NASNet-A. The best performing model from the paper [Learning Transferable Architectures for Scalable Image Recognition](https://arxiv.org/abs/1707.07012) [1].
 An extension of [AutoML](https://research.googleblog.com/2017/11/automl-for-large-scale-image.html) [2].
 
+## Other versions
+As of version [2.1.3](https://github.com/keras-team/keras/releases/tag/2.1.3) keras includes two versions of [NASNet](https://github.com/keras-team/keras/blob/master/keras/applications/nasnet.py).
+
+If you are
+
+* Only interested in `NASNet-mobile (4 @ 1056)` and/or `NASNet-large (6 @ 4032)`.
+
+* Only interested in using channel last data format.
+
+I would recommend upgrading keras and using the built in version.
+
+### This version
+
+
+Even after the addition of the built in models, there are still some uses for this project, since it is more general.
+
+* It allows you to create any NASNet-A model. If you want something faster than large and more accurate than mobile.
+
+* It allows you to load pretrained models using either channel last or channel first data format.
+
+* It allows you to load any model trained with Googles' implementation (the weights will be converted).
+
+
+
 ## Install
 System requirements on Ubuntu 16.04
 
